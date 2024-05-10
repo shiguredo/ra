@@ -59,6 +59,7 @@
          log_fold/3,
          log_read/2,
          get_membership/1,
+         get_condition_timeout/2,
          recover/1,
          state_query/2
         ]).
@@ -1308,23 +1309,11 @@ handle_follower(election_timeout,
     {follower, State, []};
 handle_follower(election_timeout, State) ->
     call_for_election(pre_vote, State);
-handle_follower(try_become_leader,
-                #{cfg := #cfg{log_id = LogId},
-                  membership := Membership} = State) when Membership =/= voter ->
-    ?DEBUG("~s: follower ignored try_become_leader, non-voter: ~p",
-           [LogId, Membership]),
-    {follower, State, []};
 handle_follower(try_become_leader, State) ->
     call_for_election(pre_vote, State);
 handle_follower({register_external_log_reader, Pid}, #{log := Log0} = State) ->
     {Log, Effs} = ra_log:register_reader(Pid, Log0),
     {follower, State#{log => Log}, Effs};
-handle_follower(force_member_change,
-                #{cfg := #cfg{log_id = LogId},
-                  membership := Membership} = State) when Membership =/= voter ->
-    ?DEBUG("~s: follower ignored force_member_change, non-voter: ~p",
-           [LogId, Membership]),
-    {follower, State, []};
 handle_follower(force_member_change,
                 #{cfg := #cfg{id = Id,
                               log_id = LogId}} = State0) ->
@@ -1430,7 +1419,7 @@ handle_await_condition(#pre_vote_rpc{} = PreVote, State) ->
 handle_await_condition(election_timeout,
                 #{cfg := #cfg{log_id = LogId},
                   membership := Membership} = State) when Membership =/= voter ->
-    ?DEBUG("~s: await_condition ignored election_timeout, non-voter: ~p",
+    ?DEBUG("~s: await_condition ignored election_timeout, replicate membership state: ~p",
            [LogId, Membership]),
     {await_condition, State, []};
 handle_await_condition(election_timeout, State) ->
@@ -3204,6 +3193,14 @@ get_membership(Cluster, PeerId, UId, Default) ->
         _ ->
             Default
     end.
+
+-spec get_condition_timeout(ra_server_state(), Default :: term()) ->
+    term() | integer().
+get_condition_timeout(#{condition := #{timeout := #{duration := D}}}, _Def) ->
+    D;
+get_condition_timeout(_, Def) ->
+    Def.
+
 
 %% Get this node's membership from a (possibly new) cluster.
 %% Defaults to last known-locally value.
