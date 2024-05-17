@@ -1309,23 +1309,11 @@ handle_follower(election_timeout,
     {follower, State, []};
 handle_follower(election_timeout, State) ->
     call_for_election(pre_vote, State);
-handle_follower(try_become_leader,
-                #{cfg := #cfg{log_id = LogId},
-                  membership := Membership} = State) when Membership =/= voter ->
-    ?DEBUG("~s: follower ignored try_become_leader, non-voter: ~p",
-           [LogId, Membership]),
-    {follower, State, []};
 handle_follower(try_become_leader, State) ->
     call_for_election(pre_vote, State);
 handle_follower({register_external_log_reader, Pid}, #{log := Log0} = State) ->
     {Log, Effs} = ra_log:register_reader(Pid, Log0),
     {follower, State#{log => Log}, Effs};
-handle_follower(force_member_change,
-                #{cfg := #cfg{log_id = LogId},
-                  membership := Membership} = State) when Membership =/= voter ->
-    ?DEBUG("~s: follower ignored force_member_change, non-voter: ~p",
-           [LogId, Membership]),
-    {follower, State, []};
 handle_follower(force_member_change,
                 #{cfg := #cfg{id = Id,
                               log_id = LogId}} = State0) ->
@@ -1431,7 +1419,7 @@ handle_await_condition(#pre_vote_rpc{} = PreVote, State) ->
 handle_await_condition(election_timeout,
                 #{cfg := #cfg{log_id = LogId},
                   membership := Membership} = State) when Membership =/= voter ->
-    ?DEBUG("~s: await_condition ignored election_timeout, non-voter: ~p",
+    ?DEBUG("~s: await_condition ignored election_timeout, replicate membership state: ~p",
            [LogId, Membership]),
     {await_condition, State, []};
 handle_await_condition(election_timeout, State) ->
@@ -2928,9 +2916,7 @@ query_indexes(#{cfg := #cfg{id = Id},
                 query_index := QueryIndex}) ->
     maps:fold(fun (PeerId, _, Acc) when PeerId == Id ->
                       Acc;
-                  (_K, #{voter_status := #{membership := non_voter}}, Acc) ->
-                      Acc;
-                  (_K, #{voter_status := #{membership := promotable}}, Acc) ->
+                  (_K, #{voter_status := #{membership := Membership}}, Acc) when Membership =/= voter ->
                       Acc;
                   (_K, #{query_index := Idx}, Acc) ->
                       [Idx | Acc]
@@ -2942,9 +2928,7 @@ match_indexes(#{cfg := #cfg{id = Id},
     {LWIdx, _} = ra_log:last_written(Log),
     maps:fold(fun (PeerId, _, Acc) when PeerId == Id ->
                       Acc;
-                  (_K, #{voter_status := #{membership := non_voter}}, Acc) ->
-                      Acc;
-                  (_K, #{voter_status := #{membership := promotable}}, Acc) ->
+                  (_K, #{voter_status := #{membership := Membership}}, Acc) when Membership =/= voter ->
                       Acc;
                   (_K, #{match_index := Idx}, Acc) ->
                       [Idx | Acc]
@@ -3262,9 +3246,7 @@ required_quorum(Cluster) ->
 
 count_voters(Cluster) ->
     maps:fold(
-      fun (_, #{voter_status := #{membership := non_voter}}, Count) ->
-              Count;
-          (_, #{voter_status := #{membership := promotable}}, Count) ->
+      fun (_, #{voter_status := #{membership := Membership}}, Count) when Membership =/= voter ->
               Count;
           (_, _, Count) ->
               Count + 1
